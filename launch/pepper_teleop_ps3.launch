@@ -1,0 +1,11 @@
+<launch>
+
+  <!-- Joy node -->
+  <node pkg="joy" type="joy_node" name="joy_node" required="true" output="screen">
+  </node>
+
+  <!-- Teleop node -->
+  <node pkg="pepper_teleop_ps3" type="pepper_teleop_ps3.py" name="pepper_teleop_ps3" required="true" output="screen">
+  </node>
+
+</launch>

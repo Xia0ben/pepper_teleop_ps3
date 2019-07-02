@@ -74,15 +74,21 @@ class Teleop:
         self.cmd_vel_publisher = rospy.Publisher(cmd_vel_topic, Twist, queue_size=1)
         self.speech_publisher = rospy.Publisher(speech_topic, String, queue_size=1)
 
-        self.move_head_srv = rospy.ServiceProxy('move_head_pose_srv', MoveHeadAtPosition)
-        self.take_pictures_srv = rospy.ServiceProxy('take_picture_service', TakePicture)
-        self.ok_move_head_srv = False
-        self.ok_take_pictures_srv = False
-        # try:
-        #     self.ok_move_head_srv = rospy.wait_for_service('move_head_pose_srv', timeout=10.0)
-        #     self.ok_take_pictures_srv = rospy.wait_for_service('take_picture_service', timeout=10.0)
-        # except (ROSException, ROSInterruptException) as e:
-        #     rospy.logwarn("Unable to connect service - {0}".format(e))
+        self.teleop_move_head = rospy.get_param("teleop_move_head", False)
+        if self.teleop_move_head:
+            self.move_head_srv = rospy.ServiceProxy('move_head_pose_srv', MoveHeadAtPosition)
+            try:
+                rospy.wait_for_service('move_head_pose_srv', timeout=10.0)
+            except (ROSException, ROSInterruptException) as e:
+                rospy.logwarn("Unable to connect move_head_pose_srv service - {0}".format(e))
+
+        self.teleop_take_pictures = rospy.get_param('teleop_take_pictures', False)
+        if self.teleop_take_pictures:
+            self.take_pictures_srv = rospy.ServiceProxy('take_picture_service', TakePicture)
+            try:
+                rospy.wait_for_service('take_picture_service', timeout=10.0)
+            except (ROSException, ROSInterruptException) as e:
+                rospy.logwarn("Unable to connect service - {0}".format(e))
 
         self.max_linear_speed = max_linear_speed
         self.max_angular_speed = max_angular_speed
@@ -92,36 +98,36 @@ class Teleop:
         self.last_joy.buttons = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         self.last_joy.axes = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-        self.curr_head_pitch = 0.0
-        self.curr_head_yaw = 0.0
-        self.head_track = True #Enable head tracking. Helps to keep head in a given position.
-        if (self.ok_move_head_srv == True):
+        if self.teleop_move_head:
+            self.curr_head_pitch = 0.0
+            self.curr_head_yaw = 0.0
+            self.head_track = True #Enable head tracking. Helps to keep head in a given position.
             self.move_head_srv(self.curr_head_pitch, self.curr_head_yaw, self.head_track)
-        self.head_pitch_step = 0.05
-        self.head_yaw_step = 0.05
-        self.head_pitch_lim = 0.5
-        self.head_yaw_lim = 0.5
+            self.head_pitch_step = 0.2
+            self.head_yaw_step = 0.2
+            self.head_pitch_lim = 0.6
+            self.head_yaw_lim = 0.6
 
         self.twist_to_apply = Twist()
 
         if self.mode == 0:
-            print "Buttons Configuration. Press any button to start. "
+            rospy.loginfo("Buttons Configuration. Press any button to start. ")
         elif self.mode == 1:
-            print "Axes Configuration. Press any button to start"
+            rospy.loginfo("Axes Configuration. Press any button to start")
         elif self.mode == 2:
-            print "No configuration needed. Start to play."
+            rospy.loginfo("No configuration needed. Start to play.")
         else:
-            print "Value mode = {0} unsupported"
+            rospy.loginfo("Value mode = {0} unsupported")
 
     def print_readable_joy(self, joy):
         for name, id in self.btns.items():
             if joy.buttons[id] != 0:
-                print(name + " button is pressed")
+                rospy.loginfo(name + " button is pressed")
 
         for name in self.axes.keys():
             norm, angle = self.get_joystick_norm_angle(joy, name)
             if norm != 0.0:
-                print(name + " is at " + str(math.degrees(angle)) + " degrees and norm at " + str(norm))
+                rospy.loginfo(name + " is at " + str(math.degrees(angle)) + " degrees and norm at " + str(norm))
 
     def get_joystick_norm_angle(self, joy, joy_name):
         # Note : 1.0 is up, -1.0 is down, 1.0 is left and -1.0 is right
@@ -140,15 +146,15 @@ class Teleop:
             if self.btns_configuration_curr == "":
                 if len(self.btns_configuration_list) > 0:
                     self.btns_configuration_curr = self.btns_configuration_list.pop(0)
-                    print "Press {0}".format(self.btns_configuration_curr)
+                    rospy.loginfo("Press {0}".format(self.btns_configuration_curr))
                 else:
-                    print "Buttons Configuration done."
+                    rospy.loginfo("Buttons Configuration done.")
                     with open(self.btns_conf_file, "wb") as btns_conf:
                         pickle.dump(self.btns, btns_conf)
                         btns_conf.close()
                     self.mode = 1
-                    print self.btns
-                    print "Axes Configuration. Press any button to start"
+                    rospy.loginfo(self.btns)
+                    rospy.loginfo("Axes Configuration. Press any button to start")
             else:
                 for i in range(12):
                     if cur_joy.buttons[i] and (i != self.prev_btn_pressed):
@@ -160,21 +166,21 @@ class Teleop:
             if self.axes_configuration_curr == "":
                 if len(self.axes_configuration_list) > 0:
                     self.axes_configuration_curr = self.axes_configuration_list.pop(0)
-                    print "Press {0} Left / Right".format(self.axes_configuration_curr)
+                    rospy.loginfo("Press {0} Left / Right".format(self.axes_configuration_curr))
                 else:
-                    print "Axes Configuration done."
-                    print self.axes
+                    rospy.loginfo("Axes Configuration done.")
+                    rospy.loginfo(self.axes)
                     with open(self.axes_conf_file, "wb") as axes_conf:
                         pickle.dump(self.axes, axes_conf)
                         axes_conf.close()
                     self.mode = 2
             else:
-                max = 0.5
+                v_max = 0.5
                 i_max = -1
                 for i in range(6):
-                    if abs(cur_joy.axes[i]) > max:
+                    if abs(cur_joy.axes[i]) > v_max:
                         i_max = i
-                        max = abs(cur_joy.axes[i])
+                        v_max = abs(cur_joy.axes[i])
                 if (i_max >= 0) and (i_max != self.prev_axe_chosen):
                     self.axes[self.axes_configuration_curr][self.axes_configuration_dir] = i_max
                     self.prev_axe_chosen = i_max
@@ -183,7 +189,7 @@ class Teleop:
                         self.axes_configuration_dir = 0
                     else:
                         self.axes_configuration_dir = 1
-                        print "Press {0} Up / Down".format(self.axes_configuration_curr)
+                        rospy.loginfo("Press {0} Up / Down".format(self.axes_configuration_curr))
         elif self.mode == 2:
             # Debug prints
             if self.debug:
@@ -200,18 +206,17 @@ class Teleop:
             if cur_l_joy_norm != 0.0:
                 twist_to_apply.angular.z = cur_l_joy_norm * (1.0 if cur_l_joy_angle < 0.0 else -1.0) * self.max_angular_speed
             # Compute head movements
-            if cur_arrows_norm != 0.0:
+            if (cur_arrows_norm != 0.0) and self.teleop_move_head:
                 #Pitch - Upper arrow -> head up
                 head_pitch_to_incr = - cur_arrows_norm * math.cos(cur_arrows_angle) * self.head_pitch_step
                 head_pitch_to_apply = self.curr_head_pitch + head_pitch_to_incr
                 head_pitch_to_apply = max(-self.head_pitch_lim, min(self.head_pitch_lim, head_pitch_to_apply))
                 #Yaw - Left arrow -> turn to the left
-                head_yaw_to_incr = cur_r_joy_norm * math.sin(-cur_r_joy_angle) * self.head_yaw_step
+                head_yaw_to_incr = cur_arrows_norm * math.sin(-cur_arrows_angle) * self.head_yaw_step
                 head_yaw_to_apply = self.curr_head_yaw + head_yaw_to_incr
                 head_yaw_to_apply = max(-self.head_yaw_lim, min(self.head_yaw_lim, head_yaw_to_apply))
                 #Move head
-                # self.move_head_srv(head_pitch_to_apply, head_yaw_to_apply, self.head_track)
-                print head_pitch_to_apply, head_yaw_to_apply
+                self.move_head_srv(head_pitch_to_apply, head_yaw_to_apply, self.head_track)
                 #save values
                 self.curr_head_pitch = head_pitch_to_apply
                 self.curr_head_yaw = head_yaw_to_apply
@@ -225,11 +230,10 @@ class Teleop:
                 self.publish_msg("Venez parler avec nos etudiants de TC")
             # Take a picture (here we go Instagram...)
             is_square_pressed = cur_joy.buttons[self.btns["square"]]
-            if is_square_pressed:
+            if is_square_pressed and self.teleop_take_pictures:
                 timestamp = datetime.datetime.fromtimestamp(time.time())
                 filename = "{0}.png".format(timestamp.isoformat('_'))
-                print "ChEeeeeeSe gne"
-                # self.take_pictures_srv("{0}/{1}".format(self.picture_folder, filename)
+                self.take_pictures_srv("{0}/{1}".format(self.picture_folder, filename))
             # No purpose
             is_arrow_up = cur_joy.buttons[self.axes["arrows"][0]]
             # Debug prints
@@ -253,7 +257,7 @@ if __name__ == '__main__':
                     joy_topic="/joy",
                     cmd_vel_topic="/cmd_vel",
                     speech_topic="/speech",
-                    max_linear_speed=0.4,
+                    max_linear_speed=0.2,
                     max_angular_speed=5.0,
                     picture_folder="/home/astro/catkin_robocup2019/data/pictures",
                     data_joystick_folder="/home/astro/catkin_robocup2019/data/pepper3_teleop_ps3",
